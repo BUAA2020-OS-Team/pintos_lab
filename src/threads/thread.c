@@ -11,6 +11,9 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
+#include "threads/fixed-point.h"
+
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -49,6 +52,9 @@ struct kernel_thread_frame
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
+
+/* Add load_avg */
+static int load_avg = 0;
 
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
@@ -361,11 +367,19 @@ thread_get_nice (void)
 }
 
 /* Returns 100 times the system load average. */
+/* Redal Design */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  /*Returns 100 times the current system load average, rounded to the nearest integer.*/
+  if(timer_ticks() % TIMER_FREQ == 0)
+  {
+    int ready_threads = list_size(&ready_list);
+    if(thread_current() != idle_thread)
+      ready_threads ++;
+    load_avg = fix_mult_fix(fix_div_fix(59, 60), load_avg) + fix_mult_int(fix_div_fix(1, 60), ready_threads);
+  }
+  return fix_to_int_near(fix_mult_int(load_avg, 100));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
