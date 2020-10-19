@@ -175,6 +175,10 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+  if (timer_ticks() % TIMER_FREQ == 0)
+  {
+    thread_update_load_avg ();
+  }
   enum intr_level old_level = intr_disable ();
   thread_foreach (thread_decrease_ticks, NULL);
   intr_set_level (old_level);

@@ -351,7 +351,8 @@ thread_foreach (thread_action_func *func, void *aux)
 }
 
 /* 若该线程处于blocked状态，则减少其等待时间1tick，需要在中断关闭时调用 */
-void thread_decrease_ticks (struct thread *t, void *aux)
+void
+thread_decrease_ticks (struct thread *t, void *aux)
 {
   if (t->wait_ticks > 0)
   {
@@ -392,19 +393,25 @@ thread_get_nice (void)
   return 0;
 }
 
+/* 更新load_avg，在时间中断处理函数中定时调用 */
+/* Redal设计，Muyung实现 */
+void
+thread_update_load_avg (void)
+{
+  int ready_threads = list_size(&ready_list);
+  if(thread_current() != idle_thread)
+    ready_threads ++;
+  const int F59D60 = 16110; /* Fixed-Point类型表示的59/60，提前保存至常量中 */
+  const int F1D60 = 273; /* Fixed-Point类型表示的1/60，提前保存至常量中 */
+  load_avg = fix_mult_fix(F59D60, load_avg) + fix_mult_int(F1D60, ready_threads);
+}
+
 /* Returns 100 times the system load average. */
 /* Redal Design */
 int
 thread_get_load_avg (void) 
 {
   /*Returns 100 times the current system load average, rounded to the nearest integer.*/
-  if(timer_ticks() % TIMER_FREQ == 0)
-  {
-    int ready_threads = list_size(&ready_list);
-    if(thread_current() != idle_thread)
-      ready_threads ++;
-    load_avg = fix_mult_fix(fix_div_fix(59, 60), load_avg) + fix_mult_int(fix_div_fix(1, 60), ready_threads);
-  }
   return fix_to_int_near(fix_mult_int(load_avg, 100));
 }
 
