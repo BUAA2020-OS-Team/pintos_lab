@@ -140,6 +140,8 @@ void thread_set_priority (int);
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
+/* 更新load_avg，在时间中断处理函数中定时调用 */
+void thread_update_load_avg (void);
 int thread_get_load_avg (void);
 
 #endif /* threads/thread.h */
