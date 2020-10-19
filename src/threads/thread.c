@@ -350,6 +350,19 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
+/* 若该线程处于blocked状态，则减少其等待时间1tick，需要在中断关闭时调用 */
+void thread_decrease_ticks (struct thread *t, void *aux)
+{
+  if (t->wait_ticks > 0)
+  {
+    t->wait_ticks--;
+    if (t->wait_ticks == 0)
+    {
+      thread_unblock(t);
+    }
+  }
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
@@ -490,6 +503,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  t->wait_ticks = 0;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
