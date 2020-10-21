@@ -55,6 +55,7 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 
 /* Add load_avg */
 static int load_avg = 0;
+static int load_avg_coefficient = 0; /* (2 * load_avg) / (2 * load_avg + 1) */
 
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
@@ -418,7 +419,9 @@ thread_update_load_avg (void)
     ready_threads ++;
   const int F59D60 = 16110; /* Fixed-Point类型表示的59/60，提前保存至常量中 */
   const int F1D60 = 273; /* Fixed-Point类型表示的1/60，提前保存至常量中 */
-  load_avg = fix_mult_fix (F59D60, load_avg) + fix_mult_int (F1D60, ready_threads);
+  load_avg = fix_mult_fix(F59D60, load_avg) + fix_mult_int(F1D60, ready_threads);
+  load_avg_coefficient = fix_mult_int(load_avg, 2);
+  load_avg_coefficient = fix_div_fix(load_avg_coefficient, fix_plus_int(load_avg_coefficient, 1));
 }
 
 /* Returns 100 times the system load average. */
@@ -430,12 +433,32 @@ thread_get_load_avg (void)
   return fix_to_int_near (fix_mult_int (load_avg, 100));
 }
 
+/* 若当前线程处于运行态，则增加其recent_cpu 1 tick */
+void
+thread_increase_recent_cpu (void)
+{
+  struct thread *t;
+  if ((t = thread_current ()) != idle_thread)
+  {
+    t->recent_cpu = fix_plus_int(t->recent_cpu, 1);
+  }
+}
+
+/* 更新每个线程的recent_cpu，在时钟中断处理函数中定时调用 */
+void
+thread_update_recent_cpu (struct thread *t, void *aux)
+{
+  int recent_cpu = t->recent_cpu;
+  recent_cpu = fix_mult_fix(load_avg_coefficient, recent_cpu);
+  t->recent_cpu = fix_plus_int(recent_cpu, t->nice);
+}
+
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  struct thread *t = thread_current ();
+  return fix_to_int_near(fix_mult_int(t->recent_cpu, 100));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -526,6 +549,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   t->wait_ticks = 0;
+  t->recent_cpu = 0;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
