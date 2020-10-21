@@ -89,6 +89,7 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
+    int64_t wait_ticks;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -130,12 +131,17 @@ void thread_yield (void);
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
+/* 若该线程处于blocked状态，则减少其等待时间1tick，需要在中断关闭时调用 */
+void thread_decrease_ticks (struct thread *t, void *aux);
+
 int thread_get_priority (void);
 void thread_set_priority (int);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
+/* 更新load_avg，在时间中断处理函数中定时调用 */
+void thread_update_load_avg (void);
 int thread_get_load_avg (void);
 
 #endif /* threads/thread.h */

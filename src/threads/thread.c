@@ -11,6 +11,9 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
+#include "threads/fixed-point.h"
+
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -49,6 +52,9 @@ struct kernel_thread_frame
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
+
+/* Add load_avg */
+static int load_avg = 0;
 
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
@@ -344,6 +350,20 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
+/* 若该线程处于blocked状态，则减少其等待时间1tick，需要在中断关闭时调用 */
+void
+thread_decrease_ticks (struct thread *t, void *aux)
+{
+  if (t->wait_ticks > 0)
+  {
+    t->wait_ticks--;
+    if (t->wait_ticks == 0)
+    {
+      thread_unblock(t);
+    }
+  }
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
@@ -373,12 +393,26 @@ thread_get_nice (void)
   return 0;
 }
 
+/* 更新load_avg，在时间中断处理函数中定时调用 */
+/* Redal设计，Muyung实现 */
+void
+thread_update_load_avg (void)
+{
+  int ready_threads = list_size(&ready_list);
+  if(thread_current() != idle_thread)
+    ready_threads ++;
+  const int F59D60 = 16110; /* Fixed-Point类型表示的59/60，提前保存至常量中 */
+  const int F1D60 = 273; /* Fixed-Point类型表示的1/60，提前保存至常量中 */
+  load_avg = fix_mult_fix(F59D60, load_avg) + fix_mult_int(F1D60, ready_threads);
+}
+
 /* Returns 100 times the system load average. */
+/* Redal Design */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  /*Returns 100 times the current system load average, rounded to the nearest integer.*/
+  return fix_to_int_near(fix_mult_int(load_avg, 100));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -476,6 +510,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  t->wait_ticks = 0;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
