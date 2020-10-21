@@ -414,7 +414,7 @@ thread_get_nice (void)
 void
 thread_update_load_avg (void)
 {
-  int ready_threads = list_sizev (&ready_list);
+  int ready_threads = list_size (&ready_list);
   if (thread_current () != idle_thread)
     ready_threads ++;
   const int F59D60 = 16110; /* Fixed-Point类型表示的59/60，提前保存至常量中 */
