@@ -188,6 +188,10 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+  if (tid == 1)
+    t->nice = 0;
+  else
+    t->nice = thread_get_nice ();
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -382,15 +386,20 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+  thread_current ()->nice = nice;
+  int current_priority;
+  int fix_last_cpu = int_to_fix (thread_get_recent_cpu ());
+  int fix_nice = int_to_fix (nice);
+  current_priority = PRI_MAX - fix_div_int (fix_last_cpu, 4) - fix_mult_int (fix_nice, 2);
+  thread_current ()->priority = current_priority;
+  thread_yield ();
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current ()->nice;
 }
 
 /* 更新load_avg，在时间中断处理函数中定时调用 */
