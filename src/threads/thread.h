@@ -25,9 +25,9 @@ typedef int tid_t;
 #define PRI_MAX 63                      /* Highest priority. */
 
 /* Thread nices. */
-#define PRI_MIN -20                     /* Lowest nice. */
-#define PRI_INITIAL 0                   /* Initial nice. */
-#define PRI_MAX 20                      /* Highest nice. */
+#define NICE_MIN -20                     /* Lowest nice. */
+#define NICE_INITIAL 0                   /* Initial nice. */
+#define NICE_MAX 20                      /* Highest nice. */
 
 /* A kernel thread or user process.
 
