@@ -55,6 +55,7 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 
 /* Add load_avg */
 static int load_avg = 0;
+static int load_avg_coefficient = 0; /* (2 * load_avg) / (2 * load_avg + 1) */
 
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
@@ -211,6 +212,10 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  /* Add:  */
+  if(t->priority > thread_current()->priority)
+    thread_yield();
+
   return tid;
 }
 
@@ -234,8 +239,8 @@ bool compare_pirority (const struct list_elem *a,
                       const struct list_elem *b,
                       void *aux)
 {
-  int a_priority = list_entry(a,struct thread,elem)->priority;
-  int b_priority = list_entry(b,struct thread,elem)->priority;
+  int a_priority = list_entry (a,struct thread,elem)->priority;
+  int b_priority = list_entry (b,struct thread,elem)->priority;
   if (a_priority>b_priority )
     return true;
   else return false;
@@ -259,7 +264,7 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
   // list_push_back (&ready_list, &t->elem);
-  list_insert_ordered(&ready_list,&t->elem,compare_pirority,&t->priority);
+  list_insert_ordered (&ready_list, &t->elem, compare_pirority, &t->priority);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -312,7 +317,7 @@ thread_exit (void)
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  list_remove (&thread_current()->allelem);
+  list_remove (&thread_current ()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
@@ -330,7 +335,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_insert_ordered(&ready_list, &cur->elem, compare_pirority, &cur->priority);
+    list_insert_ordered (&ready_list, &cur->elem, compare_pirority, &cur->priority);
     //list_push_back (&ready_list, &cur->elem);
   cur->status = THREAD_READY;
   schedule ();
@@ -387,12 +392,24 @@ void
 thread_set_nice (int nice UNUSED) 
 {
   thread_current ()->nice = nice;
-  int current_priority;
-  int fix_last_cpu = int_to_fix (thread_get_recent_cpu ());
-  int fix_nice = int_to_fix (nice);
-  current_priority = PRI_MAX - fix_div_int (fix_last_cpu, 4) - fix_mult_int (fix_nice, 2);
-  thread_current ()->priority = current_priority;
+  thread_calculate_priority (thread_current ());
   thread_yield ();
+}
+
+/* 添加代码 */
+/* Recalculating priority */
+void
+thread_calculate_priority (struct thread *t)
+{
+  int fix_last_cpu = int_to_fix (t->recent_cpu);
+  int fix_nice = int_to_fix (t->nice);
+  int current_priority = fix_to_int_near (fix_minus_int (int_to_fix (PRI_MAX) - fix_div_int (fix_last_cpu, 4), fix_mult_int (fix_nice, 2)));
+  if (current_priority < PRI_MIN)
+    t->priority = PRI_MIN;
+  else if (current_priority > PRI_MAX)
+    t->priority = PRI_MAX;
+  else 
+    t->priority = current_priority;
 }
 
 /* Returns the current thread's nice value. */
@@ -407,12 +424,14 @@ thread_get_nice (void)
 void
 thread_update_load_avg (void)
 {
-  int ready_threads = list_size(&ready_list);
-  if(thread_current() != idle_thread)
+  int ready_threads = list_size (&ready_list);
+  if (thread_current () != idle_thread)
     ready_threads ++;
   const int F59D60 = 16110; /* Fixed-Point类型表示的59/60，提前保存至常量中 */
   const int F1D60 = 273; /* Fixed-Point类型表示的1/60，提前保存至常量中 */
   load_avg = fix_mult_fix(F59D60, load_avg) + fix_mult_int(F1D60, ready_threads);
+  load_avg_coefficient = fix_mult_int(load_avg, 2);
+  load_avg_coefficient = fix_div_fix(load_avg_coefficient, fix_plus_int(load_avg_coefficient, 1));
 }
 
 /* Returns 100 times the system load average. */
@@ -421,15 +440,35 @@ int
 thread_get_load_avg (void) 
 {
   /*Returns 100 times the current system load average, rounded to the nearest integer.*/
-  return fix_to_int_near(fix_mult_int(load_avg, 100));
+  return fix_to_int_near (fix_mult_int (load_avg, 100));
+}
+
+/* 若当前线程处于运行态，则增加其recent_cpu 1 tick */
+void
+thread_increase_recent_cpu (void)
+{
+  struct thread *t;
+  if ((t = thread_current ()) != idle_thread)
+  {
+    t->recent_cpu = fix_plus_int(t->recent_cpu, 1);
+  }
+}
+
+/* 更新每个线程的recent_cpu，在时钟中断处理函数中定时调用 */
+void
+thread_update_recent_cpu (struct thread *t, void *aux)
+{
+  int recent_cpu = t->recent_cpu;
+  recent_cpu = fix_mult_fix(load_avg_coefficient, recent_cpu);
+  t->recent_cpu = fix_plus_int(recent_cpu, t->nice);
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  struct thread *t = thread_current ();
+  return fix_to_int_near(fix_mult_int(t->recent_cpu, 100));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -520,6 +559,19 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   t->wait_ticks = 0;
+  // 增加代码，对recent_cpu 和 nice 进行初始化
+  if (t == initial_thread)
+  {
+    t->recent_cpu = 0;
+    t->nice = 0;
+  }
+  else
+  {
+    t->nice = thread_current()->nice;
+    t->recent_cpu = thread_current()->recent_cpu;
+  }
+  if (thread_mlfqs)
+    thread_calculate_priority(t);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

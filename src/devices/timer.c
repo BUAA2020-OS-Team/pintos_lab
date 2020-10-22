@@ -94,7 +94,7 @@ timer_sleep (int64_t ticks)
       enum intr_level old_level = intr_disable ();
       struct thread* t = thread_current ();
       t->wait_ticks = ticks;
-      thread_block (t);
+      thread_block ();
       intr_set_level (old_level);
     }
 }
@@ -175,10 +175,20 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
-  if (timer_ticks() % TIMER_FREQ == 0)
+  thread_increase_recent_cpu ();
+  if (thread_mlfqs)
   {
-    thread_update_load_avg ();
+    if (timer_ticks() % TIMER_FREQ == 0)
+    {
+      thread_update_load_avg ();
+      enum intr_level old_level = intr_disable ();
+      thread_foreach (thread_update_recent_cpu, NULL);
+      intr_set_level (old_level);
+    }
+    if (timer_ticks() % 4 == 0)
+      thread_foreach (thread_calculate_priority, NULL);
   }
+  
   enum intr_level old_level = intr_disable ();
   thread_foreach (thread_decrease_ticks, NULL);
   intr_set_level (old_level);

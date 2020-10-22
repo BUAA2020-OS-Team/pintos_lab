@@ -25,9 +25,9 @@ typedef int tid_t;
 #define PRI_MAX 63                      /* Highest priority. */
 
 /* Thread nices. */
-#define PRI_MIN -20                     /* Lowest nice. */
-#define PRI_INITIAL 0                   /* Initial nice. */
-#define PRI_MAX 20                      /* Highest nice. */
+#define NICE_MIN -20                     /* Lowest nice. */
+#define NICE_INITIAL 0                   /* Initial nice. */
+#define NICE_MAX 20                      /* Highest nice. */
 
 /* A kernel thread or user process.
 
@@ -95,7 +95,8 @@ struct thread
     int priority;                       /* Priority. */
     int nice;                           /* Nice. */
     struct list_elem allelem;           /* List element for all threads list. */
-    int64_t wait_ticks;
+    int64_t wait_ticks;                 /* 该线程需等待的时钟脉冲数 */
+    int recent_cpu;                     /* Recent CPU ticks */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -137,7 +138,7 @@ void thread_yield (void);
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
-/* 若该线程处于blocked状态，则减少其等待时间1tick，需要在中断关闭时调用 */
+/* 若该线程处于blocked状态，则减少其等待时间 1 tick，需要在中断关闭时调用 */
 void thread_decrease_ticks (struct thread *t, void *aux);
 
 int thread_get_priority (void);
@@ -145,8 +146,14 @@ void thread_set_priority (int);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
+/* 重新计算优先级 */
+void thread_calculate_priority (struct thread *t);
+/* 若当前线程处于运行态，则增加其recent_cpu 1 tick */
+void thread_increase_recent_cpu (void);
+/* 更新每个线程的recent_cpu，在时钟中断处理函数中定时调用 */
+void thread_update_recent_cpu (struct thread *t, void *aux);
 int thread_get_recent_cpu (void);
-/* 更新load_avg，在时间中断处理函数中定时调用 */
+/* 更新load_avg，在时钟中断处理函数中定时调用 */
 void thread_update_load_avg (void);
 int thread_get_load_avg (void);
 
