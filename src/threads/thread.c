@@ -212,6 +212,10 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  /* Add:  */
+  if(t->priority > thread_current()->priority)
+    thread_yield();
+
   return tid;
 }
 
@@ -388,18 +392,24 @@ void
 thread_set_nice (int nice UNUSED) 
 {
   thread_current ()->nice = nice;
-  int current_priority;
-  int fix_last_cpu = int_to_fix (thread_get_recent_cpu ());
-  int fix_nice = int_to_fix (nice);
-  current_priority = PRI_MAX - fix_div_int (fix_last_cpu, 4) - fix_mult_int (fix_nice, 2);
-  
-  if (current_priority < PRI_MIN)
-    thread_current ()->priority = PRI_MIN;
-  else if (current_priority > PRI_MAX)
-    thread_current ()->priority = PRI_MAX;
-  else 
-    thread_current ()->priority = current_priority;
+  thread_calculate_priority (thread_current ());
   thread_yield ();
+}
+
+/* 添加代码 */
+/* Recalculating priority */
+void
+thread_calculate_priority (struct thread *t)
+{
+  int fix_last_cpu = int_to_fix (t->recent_cpu);
+  int fix_nice = int_to_fix (t->nice);
+  int current_priority = fix_to_int_near (fix_minus_int (int_to_fix (PRI_MAX) - fix_div_int (fix_last_cpu, 4), fix_mult_int (fix_nice, 2)));
+  if (current_priority < PRI_MIN)
+    t->priority = PRI_MIN;
+  else if (current_priority > PRI_MAX)
+    t->priority = PRI_MAX;
+  else 
+    t->priority = current_priority;
 }
 
 /* Returns the current thread's nice value. */
@@ -549,7 +559,19 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   t->wait_ticks = 0;
-  t->recent_cpu = 0;
+  // 增加代码，对recent_cpu 和 nice 进行初始化
+  if (t == initial_thread)
+  {
+    t->recent_cpu = 0;
+    t->nice = 0;
+  }
+  else
+  {
+    t->nice = thread_current()->nice;
+    t->recent_cpu = thread_current()->recent_cpu;
+  }
+  if (thread_mlfqs)
+    thread_calculate_priority(t);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
