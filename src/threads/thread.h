@@ -146,6 +146,8 @@ void thread_set_priority (int);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
+/* 重新计算优先级 */
+void thread_calculate_priority (struct thread *t);
 /* 若当前线程处于运行态，则增加其recent_cpu 1 tick */
 void thread_increase_recent_cpu (void);
 /* 更新每个线程的recent_cpu，在时钟中断处理函数中定时调用 */

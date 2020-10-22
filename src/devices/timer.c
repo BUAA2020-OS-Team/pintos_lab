@@ -176,13 +176,19 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
   thread_increase_recent_cpu ();
-  if (timer_ticks() % TIMER_FREQ == 0)
+  if (thread_mlfqs)
   {
-    thread_update_load_avg ();
-    enum intr_level old_level = intr_disable ();
-    thread_foreach (thread_update_recent_cpu, NULL);
-    intr_set_level (old_level);
+    if (timer_ticks() % TIMER_FREQ == 0)
+    {
+      thread_update_load_avg ();
+      enum intr_level old_level = intr_disable ();
+      thread_foreach (thread_update_recent_cpu, NULL);
+      intr_set_level (old_level);
+    }
+    if (timer_ticks() % 4 == 0)
+      thread_foreach (thread_calculate_priority, NULL);
   }
+  
   enum intr_level old_level = intr_disable ();
   thread_foreach (thread_decrease_ticks, NULL);
   intr_set_level (old_level);
