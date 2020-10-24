@@ -229,7 +229,6 @@ thread_priority_donation(struct lock *lock)
   }
   // 被捐献线程是否在等待其他锁，对持有该锁的线程进行捐赠
   // 一种方法：查所有锁的队列，看该线程是否在其他锁的等待队列中，找出该锁递归调用该函数
-  // bug : 未进入循环(第一层), 有两个锁无法进入, 有一个锁可以进入
   struct list_elem *lock_e;
   for (lock_e = list_begin (&all_lock_list); lock_e != list_end (&all_lock_list);
      lock_e = list_next (lock_e))
