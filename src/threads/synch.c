@@ -68,7 +68,9 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      list_push_back (&sema->waiters, &thread_current ()->elem);
+      //list_push_back (&sema->waiters, &thread_current ()->elem);
+      struct thread *t = thread_current();
+      list_insert_ordered (&sema->waiters, &t->elem, compare_pirority, NULL);
       thread_block ();
     }
   sema->value--;
@@ -117,6 +119,7 @@ sema_up (struct semaphore *sema)
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
   sema->value++;
+
   intr_set_level (old_level);
 }
 
@@ -181,6 +184,91 @@ lock_init (struct lock *lock)
   sema_init (&lock->semaphore, 1);
 }
 
+/* priority donation */
+void
+thread_priority_donation(struct lock *lock)
+{
+  if(thread_mlfqs)
+    return;
+  if (lock->holder == NULL)
+    return;
+  
+  /* 关中断 */
+  enum intr_level old_level = intr_disable ();
+
+  // 最基本的情况，对持有锁的线程进行捐赠
+  if (list_empty (&lock->semaphore.waiters))
+  {
+    if (thread_current()->priority > lock->holder->priority)
+      lock->holder->priority = thread_current()->priority;
+  }
+  if (!list_empty (&lock->semaphore.waiters))
+  {
+    struct list_elem *t_elem = list_front (&lock->semaphore.waiters);
+    struct thread *t = list_entry (t_elem, struct thread, elem);
+    int max_priority = 0;
+    if (t->priority > thread_current ()->priority)
+      max_priority = t->priority;
+    else
+      max_priority = thread_current ()->priority;
+    if (max_priority > lock->holder->priority)
+    {
+      lock->holder->priority = max_priority;
+    }
+    // 被捐献线程是否在等待其他锁，对持有该锁的线程进行捐赠
+    // 一种方法：查每个线程的lock_held 列表中的锁的waiters队列，看是否有被捐献线程，找出该锁递归调用该函数
+  }
+
+  intr_set_level (old_level);
+}
+
+/* 撤销捐赠 */
+void
+thread_withdraw_donation(struct lock *lock)
+{
+  if (thread_mlfqs)
+    return;
+
+  /* 关中断 */
+  //enum intr_level old_level = intr_disable ();
+
+  struct thread *t = thread_current ();
+  list_remove (&lock->allelem);      // 从线程持有锁的队列中移除
+
+  // 该线程是否还持有其他锁
+  if (!list_empty(&t->lock_held))
+  {
+    // 获取其余锁中最高的优先级
+    struct list_elem *e;
+    int max_priority = 0;
+    for (e = list_begin (&t->lock_held); e != list_end (&t->lock_held);
+       e = list_next (e))
+      {
+        struct lock *lock_another = list_entry(e, struct lock, allelem);
+        struct list lock_waiter = lock_another->semaphore.waiters;
+        struct thread *t = list_entry (list_front (&lock_waiter), struct thread, elem);
+
+        if (t != NULL && t->priority > max_priority )
+        {
+          max_priority = t->priority;
+        }
+      }
+    // 进行优先级捐赠
+    if (thread_current()->origin_priority < max_priority)
+      t->priority = max_priority;
+    else
+      t->priority = t->origin_priority;
+  }
+  else
+  {
+    // 将优先级还原
+    t->priority = t->origin_priority;
+  }
+  
+
+  //intr_set_level (old_level);
+}
+
 /* Acquires LOCK, sleeping until it becomes available if
    necessary.  The lock must not already be held by the current
    thread.
@@ -196,8 +284,12 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  // 调用priority donation
+  thread_priority_donation(lock);
+
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
+  list_push_back (&thread_current()->lock_held, &lock->allelem);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -232,7 +324,14 @@ lock_release (struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
 
   lock->holder = NULL;
+
+  enum intr_level old_level = intr_disable ();
+  
   sema_up (&lock->semaphore);
+  thread_withdraw_donation(lock);
+
+  intr_set_level (old_level);
+  thread_yield ();
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -295,7 +394,8 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  list_push_back (&cond->waiters, &waiter.elem);
+  //list_push_back (&cond->waiters, &waiter.elem);
+  list_insert_ordered (&cond->waiters, &waiter.elem, compare_pirority, NULL);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
