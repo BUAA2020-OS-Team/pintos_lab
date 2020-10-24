@@ -93,10 +93,13 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    int origin_priority;                /* Priority before donation */
     int nice;                           /* Nice. */
     struct list_elem allelem;           /* List element for all threads list. */
+    bool sleep;                         /* 线程是否在sleep */
     int64_t wait_ticks;                 /* 该线程需等待的时钟脉冲数 */
     int recent_cpu;                     /* Recent CPU ticks */
+    struct list lock_held;              /* 线程持有的锁 */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -156,5 +159,10 @@ int thread_get_recent_cpu (void);
 /* 更新load_avg，在时钟中断处理函数中定时调用 */
 void thread_update_load_avg (void);
 int thread_get_load_avg (void);
+
+/* 优先级比较函数 */
+bool compare_pirority (const struct list_elem *a,
+                      const struct list_elem *b,
+                      void *aux);
 
 #endif /* threads/thread.h */
