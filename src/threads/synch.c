@@ -32,6 +32,9 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+static struct list all_lock_list;
+bool is_init = false;    // 判断all_lock_list是否已被初始化
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -180,8 +183,15 @@ lock_init (struct lock *lock)
 {
   ASSERT (lock != NULL);
 
+  if (!is_init)
+  {
+    list_init (&all_lock_list);
+    is_init = true;
+  }
+
   lock->holder = NULL;
   sema_init (&lock->semaphore, 1);
+  list_push_back (&all_lock_list, &lock->allelem);
 }
 
 /* priority donation */
@@ -215,9 +225,28 @@ thread_priority_donation(struct lock *lock)
     {
       lock->holder->priority = max_priority;
     }
-    // 被捐献线程是否在等待其他锁，对持有该锁的线程进行捐赠
-    // 一种方法：查每个线程的lock_held 列表中的锁的waiters队列，看是否有被捐献线程，找出该锁递归调用该函数
+    
   }
+  // 被捐献线程是否在等待其他锁，对持有该锁的线程进行捐赠
+  // 一种方法：查所有锁的队列，看该线程是否在其他锁的等待队列中，找出该锁递归调用该函数
+  // bug : 未进入循环(第一层), 有两个锁无法进入, 有一个锁可以进入
+  struct list_elem *lock_e;
+  for (lock_e = list_begin (&all_lock_list); lock_e != list_end (&all_lock_list);
+     lock_e = list_next (lock_e))
+     {
+       struct lock *l = list_entry (lock_e, struct lock, allelem);
+       struct list_elem *e;
+       for (e = list_begin (&l->semaphore.waiters); e != list_end (&l->semaphore.waiters);
+          e = list_next (e))
+          {
+            struct thread *t = list_entry (e, struct thread, elem);
+            if (t == lock->holder)
+            {
+              thread_priority_donation (l);
+              list_sort (&l->semaphore.waiters, compare_pirority, NULL);  // 捐献后对等待对列进行排序
+            }
+          }
+      }
 
   intr_set_level (old_level);
 }
@@ -233,7 +262,7 @@ thread_withdraw_donation(struct lock *lock)
   //enum intr_level old_level = intr_disable ();
 
   struct thread *t = thread_current ();
-  list_remove (&lock->allelem);      // 从线程持有锁的队列中移除
+  list_remove (&lock->elem);      // 从线程持有锁的队列中移除
 
   // 该线程是否还持有其他锁
   if (!list_empty(&t->lock_held))
@@ -244,7 +273,7 @@ thread_withdraw_donation(struct lock *lock)
     for (e = list_begin (&t->lock_held); e != list_end (&t->lock_held);
        e = list_next (e))
       {
-        struct lock *lock_another = list_entry(e, struct lock, allelem);
+        struct lock *lock_another = list_entry(e, struct lock, elem);
         struct list lock_waiter = lock_another->semaphore.waiters;
         struct thread *t = list_entry (list_front (&lock_waiter), struct thread, elem);
 
@@ -289,7 +318,7 @@ lock_acquire (struct lock *lock)
 
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
-  list_push_back (&thread_current()->lock_held, &lock->allelem);
+  list_push_back (&thread_current()->lock_held, &lock->elem);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
