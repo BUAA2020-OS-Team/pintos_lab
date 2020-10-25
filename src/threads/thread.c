@@ -379,6 +379,7 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
+  thread_current ()-> origin_priority = new_priority;
   thread_yield ();
 }
 
