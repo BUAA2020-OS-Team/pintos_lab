@@ -189,10 +189,10 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
-  if (tid == 1)
-    t->nice = 0;
-  else
-    t->nice = thread_get_nice ();
+  // if (tid == 1)
+  //   t->nice = 0;
+  // else
+  //   t->nice = thread_get_nice ();
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -213,7 +213,7 @@ thread_create (const char *name, int priority,
   thread_unblock (t);
 
   /* Add:  */
-  if(t->priority > thread_current()->priority)
+  if (t->priority > thread_current()->priority)
     thread_yield();
 
   return tid;
@@ -239,9 +239,9 @@ bool compare_pirority (const struct list_elem *a,
                       const struct list_elem *b,
                       void *aux)
 {
-  int a_priority = list_entry (a,struct thread,elem)->priority;
-  int b_priority = list_entry (b,struct thread,elem)->priority;
-  if (a_priority>b_priority )
+  int a_priority = list_entry (a, struct thread, elem)->priority;
+  int b_priority = list_entry (b, struct thread, elem)->priority;
+  if (a_priority > b_priority )
     return true;
   else return false;
 }
@@ -366,8 +366,9 @@ thread_decrease_ticks (struct thread *t, void *aux)
   if (t->wait_ticks > 0)
   {
     t->wait_ticks--;
-    if (t->wait_ticks == 0)
+    if (t->wait_ticks == 0 && t->sleep)
     {
+      t->sleep = false;
       thread_unblock(t);
     }
   }
@@ -378,6 +379,8 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
+  thread_current ()-> origin_priority = new_priority;
+  thread_yield ();
 }
 
 /* Returns the current thread's priority. */
@@ -401,6 +404,8 @@ thread_set_nice (int nice UNUSED)
 void
 thread_calculate_priority (struct thread *t)
 {
+  if (!thread_mlfqs)
+    return;
   int fix_last_cpu = int_to_fix (t->recent_cpu);
   int fix_nice = int_to_fix (t->nice);
   int current_priority = fix_to_int_near (fix_minus_int (int_to_fix (PRI_MAX) - fix_div_int (fix_last_cpu, 4), fix_mult_int (fix_nice, 2)));
@@ -557,8 +562,11 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->origin_priority = priority;
+  list_init(&t->lock_held);
   t->magic = THREAD_MAGIC;
   t->wait_ticks = 0;
+  t->sleep = false;
   // 增加代码，对recent_cpu 和 nice 进行初始化
   if (t == initial_thread)
   {
