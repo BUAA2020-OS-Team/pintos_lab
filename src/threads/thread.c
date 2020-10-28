@@ -378,8 +378,22 @@ thread_decrease_ticks (struct thread *t, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
-  thread_current ()-> origin_priority = new_priority;
+  /* in donation */
+  if (thread_current ()->priority != thread_current ()->origin_priority) 
+    {
+      if (new_priority > thread_current ()->priority)
+        {
+          thread_current ()->priority = new_priority;
+          thread_current ()->origin_priority = new_priority;
+        }
+      else 
+        thread_current ()->origin_priority = new_priority;
+    }
+  else 
+    {
+      thread_current ()->priority = new_priority;
+      thread_current ()->origin_priority = new_priority;
+    }
   thread_yield ();
 }
 
