@@ -124,6 +124,7 @@ sema_up (struct semaphore *sema)
   sema->value++;
 
   intr_set_level (old_level);
+  thread_yield();
 }
 
 static void sema_test_helper (void *sema_);
@@ -258,7 +259,7 @@ thread_withdraw_donation(struct lock *lock)
     return;
 
   /* 关中断 */
-  //enum intr_level old_level = intr_disable ();
+  enum intr_level old_level = intr_disable ();
 
   struct thread *t = thread_current ();
   list_remove (&lock->elem);      // 从线程持有锁的队列中移除
@@ -294,7 +295,7 @@ thread_withdraw_donation(struct lock *lock)
   }
   
 
-  //intr_set_level (old_level);
+  intr_set_level (old_level);
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -354,12 +355,12 @@ lock_release (struct lock *lock)
 
   lock->holder = NULL;
 
-  enum intr_level old_level = intr_disable ();
-  
-  sema_up (&lock->semaphore);
-  thread_withdraw_donation(lock);
+  // enum intr_level old_level = intr_disable ();
 
-  intr_set_level (old_level);
+  thread_withdraw_donation(lock);
+  sema_up (&lock->semaphore);
+
+  // intr_set_level (old_level);
   thread_yield ();
 }
 
