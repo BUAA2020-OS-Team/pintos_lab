@@ -9,6 +9,7 @@ struct semaphore
   {
     unsigned value;             /* Current value. */
     struct list waiters;        /* List of waiting threads. */
+    struct list_elem elem;      /* 用来构造线程等待的信号量表 */
   };
 
 void sema_init (struct semaphore *, unsigned value);

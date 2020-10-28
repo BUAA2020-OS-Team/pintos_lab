@@ -100,6 +100,7 @@ struct thread
     int64_t wait_ticks;                 /* 该线程需等待的时钟脉冲数 */
     int recent_cpu;                     /* Recent CPU ticks */
     struct list lock_held;              /* 线程持有的锁 */
+    struct semaphore *wait_sema;         /* 线程正在等待的信号量 */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
