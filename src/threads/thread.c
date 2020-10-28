@@ -378,8 +378,22 @@ thread_decrease_ticks (struct thread *t, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
-  thread_current ()-> origin_priority = new_priority;
+  /* in donation */
+  if (thread_current ()->priority != thread_current ()->origin_priority) 
+    {
+      if (new_priority > thread_current ()->priority)
+        {
+          thread_current ()->priority = new_priority;
+          thread_current ()->origin_priority = new_priority;
+        }
+      else 
+        thread_current ()->origin_priority = new_priority;
+    }
+  else 
+    {
+      thread_current ()->priority = new_priority;
+      thread_current ()->origin_priority = new_priority;
+    }
   thread_yield ();
 }
 
@@ -406,9 +420,11 @@ thread_calculate_priority (struct thread *t)
 {
   if (!thread_mlfqs)
     return;
-  int fix_last_cpu = int_to_fix (t->recent_cpu);
-  int fix_nice = int_to_fix (t->nice);
-  int current_priority = fix_to_int_near (fix_minus_int (int_to_fix (PRI_MAX) - fix_div_int (fix_last_cpu, 4), fix_mult_int (fix_nice, 2)));
+  // int fix_last_cpu = int_to_fix (t->recent_cpu);
+  // int fix_nice = int_to_fix (t->nice);
+  // int current_priority = fix_to_int_near (fix_minus_int (int_to_fix (PRI_MAX) - fix_div_int (fix_last_cpu, 4), fix_mult_int (fix_nice, 2)));
+
+  int current_priority = fix_to_int_zero ( fix_minus_int (fix_minus_fix(int_to_fix(PRI_MAX),fix_div_int(t->recent_cpu,4)),t->nice*2 ));
   if (current_priority < PRI_MIN)
     t->priority = PRI_MIN;
   else if (current_priority > PRI_MAX)
