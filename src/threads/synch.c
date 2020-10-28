@@ -74,6 +74,7 @@ sema_down (struct semaphore *sema)
       //list_push_back (&sema->waiters, &thread_current ()->elem);
       struct thread *t = thread_current();
       list_insert_ordered (&sema->waiters, &t->elem, compare_pirority, NULL);
+      t->wait_sema = sema;
       thread_block ();
     }
   sema->value--;
@@ -119,11 +120,16 @@ sema_up (struct semaphore *sema)
 
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) 
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
+  {
+    struct thread *t = list_entry (list_pop_front (&sema->waiters),
+                                struct thread, elem);
+    thread_unblock (t);
+    t->wait_sema = NULL;
+  }
   sema->value++;
 
   intr_set_level (old_level);
+  thread_yield();
 }
 
 static void sema_test_helper (void *sema_);
@@ -246,6 +252,12 @@ thread_priority_donation(struct lock *lock)
             }
           }
       }
+  /* 当被捐赠的线程正在等待信号量时，应刷新等待队列 */
+  struct semaphore *sema;
+  if ((sema = lock->holder->wait_sema) != NULL)
+  {
+    list_sort(&sema->waiters, compare_pirority, NULL);
+  }
 
   intr_set_level (old_level);
 }
@@ -292,7 +304,12 @@ thread_withdraw_donation(struct lock *lock)
     // 将优先级还原
     t->priority = t->origin_priority;
   }
-  
+  /* 当被撤销的线程正在等待信号量时，应刷新等待队列 */
+  struct semaphore *sema;
+  if ((sema = t->wait_sema) != NULL)
+  {
+    list_sort(&sema->waiters, compare_pirority, NULL);
+  }
 
   //intr_set_level (old_level);
 }
@@ -354,12 +371,12 @@ lock_release (struct lock *lock)
 
   lock->holder = NULL;
 
-  enum intr_level old_level = intr_disable ();
+  // enum intr_level old_level = intr_disable ();
   
-  sema_up (&lock->semaphore);
   thread_withdraw_donation(lock);
-
-  intr_set_level (old_level);
+  sema_up (&lock->semaphore);
+  
+  // intr_set_level (old_level);
   thread_yield ();
 }
 

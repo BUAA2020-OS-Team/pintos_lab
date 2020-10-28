@@ -567,6 +567,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
   t->wait_ticks = 0;
   t->sleep = false;
+  t->wait_sema = NULL;
   // 增加代码，对recent_cpu 和 nice 进行初始化
   if (t == initial_thread)
   {
